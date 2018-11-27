@@ -34,19 +34,16 @@ sim = sm.Simulation(state_size, action_size) #create simulator
 
 mass = 10. #mass of the object
 dim = np.array([1.,1.,1.]) #dimensions of the cube object
-x = np.array([0.,0.,1.]) #position
+x = np.array([0.,0.,5.]) #position
 q = Quaternion(np.array([0.,0.,0.,1.])) #rotation
 p = np.array([0.,0.,0.]) #linear momentum
 l = np.array([0.,0.,0.]) #angular momentum
 objectType = "Agent"
 objectName = "Prime"
     #forward, back, up, down, left, right, rollleft, rollright
-thrusts = np.array([50.,0.5 ,0.5,0.5 ,0.5,0.5, 0.5,0.5]) #the thrust magnitude for the various thrusters
+thrusts = np.array([1.0,0.5 ,0.5,0.5 ,0.5,0.5, 0.5,0.5]) #the thrust magnitude for the various thrusters
 loadtime = 10. #ten second load time between firing projectiles
 sim.createObject(mass, dim, x, q, p, l, objectType, objectName, thrusts, loadtime) #add cube object to bodies
-
-trackTotalOutput = False #enable if you want visualization
-sim.createSimulation(tick_length, trackTotalOutput)
 
 # Deep Q-learning Agent
 class DQNAgent:
@@ -86,7 +83,7 @@ class DQNAgent:
     def act(self, state):
         # Act in an epsilon greedy manner
         if np.random.rand() <= self.epsilon:
-            return env.action_space.sample()
+            return self.env.action_space.sample()
         act_values = self.model.predict(state)
         return np.argmax(act_values[0])  
     
@@ -113,23 +110,24 @@ class DQNAgent:
             self.epsilon *= self.epsilon_decay
             
 # initialize gym environment and the agent
-env = sim
-agent = DQNAgent(env)
-episodes = 500
+trackTotalOutput = False #enable if you want visualization
+sim.createSimulation(tick_length, trackTotalOutput)
+agent = DQNAgent(sim)
+episodes = 5000
 rewards = deque(maxlen=100)
 
-statesave = env.reset()
+statesave = agent.env.reset()
 
 #Build Memory
 print("Building Memory")
 for i in range(50):
     print("memory {0}".format(i))
-    state = env.reset()
+    state = agent.env.reset()
     state = np.reshape(state[0:13], [1, agent.state_size])
     done = False
     while not done:
         action = np.array([agent.act(state)])
-        next_state, reward, done = env.runSimulation(action)
+        next_state, reward, done = agent.env.runSimulation(action)
         next_state = np.reshape(next_state[0:13], [1, agent.state_size])
         agent.remember(state, action, reward, next_state, done)
         state = next_state
@@ -137,13 +135,13 @@ for i in range(50):
 #Learn
 print("Learning")
 for e in range(episodes):
-    state = env.reset()
+    state = agent.env.reset()
     state = np.reshape(state[0:13], [1, agent.state_size])
     done = False
     R = 0
     while not done:
         action = np.array([agent.act(state)])
-        next_state, reward, done = env.runSimulation(action)
+        next_state, reward, done = agent.env.runSimulation(action)
         next_state = np.reshape(next_state[0:13], [1, agent.state_size])
         agent.remember(state, action, reward, next_state, done)
         state = next_state
@@ -153,7 +151,7 @@ for e in range(episodes):
                   .format(e+1, episodes, R, np.average(rewards)))
             rewards.append(R)
             break
-    if e >= 3 and np.average(rewards) >= 300:
+    if e >= episodes and np.average(rewards) >= 300:
         print("Environment Solved")
         break
     agent.replay(50)
@@ -162,33 +160,35 @@ for e in range(episodes):
 position = np.zeros(3)
     
 ##### VISUALIZE FINAL RUN #####
+state = agent.env.reset()
+state = np.reshape(state[0:13], [1, agent.state_size])
 done = False
-    while not done:
-        action = np.array([agent.act(state)])
-        next_state, reward, done = env.runSimulation(action)
-        next_state = np.reshape(next_state[0:13], [1, agent.state_size])
-        position = np.vstack((position,next_state[0:3]))
-        agent.remember(state, action, reward, next_state, done)
-        state = next_state
-        R += reward
-        if done:
-            print("reward: {0}".format(R))
-            break
+while not done:
+    action = np.array([agent.act(state)])
+    next_state, reward, done = env.runSimulation(action)
+    position = np.vstack((position,next_state[0:3]))
+    next_state = np.reshape(next_state[0:13], [1, agent.state_size])
+    agent.remember(state, action, reward, next_state, done)
+    state = next_state
+    R += reward
+    if done:
+        print("reward: {0}".format(R))
+        break
             
 position = position[1:,:]
 
-mpl.rcParams['legend.fontsize'] = fontSize
+mpl.rcParams['legend.fontsize'] = 10
 fig = plt.figure()
-self.ax = fig.gca(projection='3d')
-self.ax.scatter(checkPointSamples[:,0], checkPointSamples[:,1], checkPointSamples[:,2], color=(0.,0.,0.))
+ax = fig.gca(projection='3d')
+print(position)
+ax.scatter(position[:,0], position[:,1], position[:,2], color=(0.,0.,0.))
 
-self.ax.legend()
-self.ax.set_xlabel("X (position)")
-self.ax.set_ylabel("Y (position)")
-self.ax.set_zlabel("Z (position)")
+ax.legend()
+ax.set_xlabel("X (position)")
+ax.set_ylabel("Y (position)")
+ax.set_zlabel("Z (position)")
+
 plt.show()
-        
-
 
 
             

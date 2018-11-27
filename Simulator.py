@@ -23,6 +23,7 @@ class Simulation(): #Rigid Body
         self.bodies = []
         self.projectileCount = 0
         self.resetState = np.zeros(state_size)
+        self.resetBodies = []
         self.action_space = a_s.ActionSpace(action_size)
     def State_To_Array(self, state):
         y = 0
@@ -194,10 +195,14 @@ class Simulation(): #Rigid Body
         self.yfinal = self.Bodies_To_Array() 
         #self.resetState = self.yfinal
         self.resetState = copy.deepcopy(self.yfinal)
+        self.resetBodies = copy.deepcopy(self.bodies)
         
     def reset(self):
-        self.yfinal = self.resetState
-        self.bodies = self.Array_To_Bodies(self.resetState)
+        self.yfinal = copy.deepcopy(self.resetState)
+        self.y0 = copy.deepcopy(self.resetState)
+        self.bodies = copy.deepcopy(self.resetBodies)
+        #print(self.bodies)
+        self.t = 0.
         return self.yfinal
     
     def runSimulation(self, agentActions):       
@@ -228,12 +233,13 @@ class Simulation(): #Rigid Body
         if(len(self.bodies) == 0):
             #print("NO MORE BODIES!")
             print("hit planet")
-            return self.tempY, -1000., True
+            return self.tempY, self.tempR, True
         #############agent actions added here###########
         #forward, back, up, down, left, right, rollleft, rollright
         i = 0
         while(i < len(self.bodies)):
             self.y0[(i*self.state_size)+13:(i*self.state_size)+21] = self.action_space.actions[int(agentActions[i])]
+            print("Thruster: {0}".format(int(agentActions[i])))
             i += 1           
             
         ###############################################
@@ -246,14 +252,15 @@ class Simulation(): #Rigid Body
         
         ##########################reward function#########################
         reward = 0.
-        maxDistance = 2.
-        targetDistance = 1.
+        maxDistance = 10.
+        targetDistance = 5.
         a = 1
         target = "Prime"
         i = 0
         while(i < len(self.bodies)):
             if(self.bodies[i].objectName == target):
                 distance = np.linalg.norm(self.bodies[i].X)
+                print(distance)
                 temp = np.absolute(distance - targetDistance)
                 reward = (-a*np.square(temp)) + 1
                 self.tempR = reward
