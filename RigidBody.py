@@ -14,9 +14,9 @@ def calcGravity(F, X, mass):
     return F + np.multiply(-((gravConstant)*planet_mass*mass)/r2,X)
     
 @jit (nopython=True,cache=True)
-def planetCollision(X, P, mass):
-    planet_position = np.array([0.,0.,0.])
-    planet_radius = 0.1
+def checkCollision(X, Xt, tradius, P, mass):
+    planet_position = Xt
+    planet_radius = tradius
     
     p1 = X
     p2 = X + (P/mass)
@@ -248,9 +248,11 @@ class Body(): #Rigid Body
         F = np.array([0.,0.,0.])
         T = np.array([0.,0.,0.])
         
-        gravity = True
+        gravity = False
         if(gravity and self.alive):   
-            collision = planetCollision(self.X, self.P, self.mass)            
+            planetpos = np.array([0.,0.,0.])
+            planetradius = 0.1
+            collision = checkCollision(self.X, planetpos, planetradius, self.P, self.mass)            
             if(collision):
                 self.alive = False
                 #print("hit planet") 
@@ -260,6 +262,7 @@ class Body(): #Rigid Body
         #state_size = 13 + 8 = 21
         if(self.objectType == "Agent" and self.alive):
             T, F = thrustersCalculate(y, T, F, self.X, self.R, self.thrusts)
+            
             
         self.force = F
         self.torque = T

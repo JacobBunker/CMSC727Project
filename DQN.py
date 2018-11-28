@@ -28,29 +28,36 @@ seconds = 50.     #seconds to simulate
 step_size = 1.        # intervals to print seconds at. -1 for no print
 verbose = False     #true to print
 
-action_size = 8
-state_size = 13 + action_size #don't change this, default = 13, agentActions = 8
-sim = sm.Simulation(state_size, action_size) #create simulator
+action_size = 9
+action_type = "turretAgent"
+state_size = 13 + action_size #don't change this, default = 13
+sim = sm.Simulation(state_size, action_size, action_type) #create simulator
 
 mass = 10. #mass of the object
 dim = np.array([1.,1.,1.]) #dimensions of the cube object
-x = np.array([0.,0.,5.]) #position
+x = np.array([0.,0.,0.]) #position
 q = Quaternion(np.array([0.,0.,0.,1.])) #rotation
 p = np.array([0.,0.,0.]) #linear momentum
 l = np.array([0.,0.,0.]) #angular momentum
 objectType = "Agent"
 objectName = "Prime"
     #forward, back, up, down, left, right, rollleft, rollright
-thrusts = np.array([1.0,0.5 ,0.5,0.5 ,0.5,0.5, 0.5,0.5]) #the thrust magnitude for the various thrusters
+thrusts = np.array([1.0,2. ,2.,2. ,2.,2., 0.5,0.5]) #the thrust magnitude for the various thrusters
 loadtime = 10. #ten second load time between firing projectiles
 sim.createObject(mass, dim, x, q, p, l, objectType, objectName, thrusts, loadtime) #add cube object to bodies
 
+objectType = "Target"
+objectName = "ShootMe"
+x = np.array([0.,0.,8.]) #position
+sim.createObject(mass, dim, x, q, p, l, objectType, objectName, thrusts, loadtime) #add cube object to bodies
+
 # Deep Q-learning Agent
+                            ## THE TURRET
 class DQNAgent:
     def __init__(self, env):
         self.env = env # environment
-        self.state_size = 13 #env.state_size # number of state parameters
-        self.action_size = 2 #env.action_space.rows # number of possible actions
+        self.state_size = 15 #env.state_size # number of state parameters
+        self.action_size = 6 #env.action_space.rows # number of possible actions
         self.memory = deque(maxlen=10000) # memory stores max of 10000 events
         self.gamma = 0.95    # discount rate
         self.epsilon = 1.0  # exploration rate
@@ -104,6 +111,10 @@ class DQNAgent:
                 # Standard value function
                 target = reward + self.gamma * np.amax(self.model.predict(next_state)[0])
             target_f = self.model.predict(state)
+            #print(self.model.predict(next_state)[0])
+            #print(action)
+            #print(target_f)
+            #print(target)
             target_f[0][action] = target # alpha = 1 in this agent
             self.model.fit(state, target_f, epochs=1, verbose=0)
         if self.epsilon > self.epsilon_min:
@@ -120,15 +131,15 @@ statesave = agent.env.reset()
 
 #Build Memory
 print("Building Memory")
-for i in range(50):
+for i in range(1):
     print("memory {0}".format(i))
     state = agent.env.reset()
-    state = np.reshape(state[0:13], [1, agent.state_size])
+    state = np.reshape(state, [1, agent.state_size])
     done = False
     while not done:
         action = np.array([agent.act(state)])
         next_state, reward, done = agent.env.runSimulation(action)
-        next_state = np.reshape(next_state[0:13], [1, agent.state_size])
+        next_state = np.reshape(state, [1, agent.state_size])
         agent.remember(state, action, reward, next_state, done)
         state = next_state
 
@@ -136,13 +147,13 @@ for i in range(50):
 print("Learning")
 for e in range(episodes):
     state = agent.env.reset()
-    state = np.reshape(state[0:13], [1, agent.state_size])
+    state = np.reshape(state, [1, agent.state_size])
     done = False
     R = 0
     while not done:
         action = np.array([agent.act(state)])
         next_state, reward, done = agent.env.runSimulation(action)
-        next_state = np.reshape(next_state[0:13], [1, agent.state_size])
+        next_state = np.reshape(state, [1, agent.state_size])
         agent.remember(state, action, reward, next_state, done)
         state = next_state
         R += reward
@@ -161,13 +172,13 @@ position = np.zeros(3)
     
 ##### VISUALIZE FINAL RUN #####
 state = agent.env.reset()
-state = np.reshape(state[0:13], [1, agent.state_size])
+state = np.reshape(state, [1, agent.state_size])
 done = False
 while not done:
     action = np.array([agent.act(state)])
     next_state, reward, done = env.runSimulation(action)
     position = np.vstack((position,next_state[0:3]))
-    next_state = np.reshape(next_state[0:13], [1, agent.state_size])
+    next_state = np.reshape(state, [1, agent.state_size])
     agent.remember(state, action, reward, next_state, done)
     state = next_state
     R += reward

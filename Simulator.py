@@ -16,15 +16,22 @@ def getIInvandOmega(R, IBodyInv, L):
     omega = np.dot(iinv, L)
     return iinv, omega
 
+def processStateOuput(yfinal, t, projectileCount): #process the output for the particular model we are learning
+    #this returns the agent position, agent rotation, agent angular momentum, 
+            #the target position, the time, and the projectile count
+    out = np.append(yfinal[0:7], yfinal[10:13])
+    out = np.append(out, yfinal[22:25])
+    out = np.append(out, [t, projectileCount])
+    return out
 
 class Simulation(): #Rigid Body 
-    def __init__(self, state_size, action_size): 
+    def __init__(self, state_size, action_size, action_type): 
         self.state_size = state_size
         self.bodies = []
         self.projectileCount = 0
         self.resetState = np.zeros(state_size)
         self.resetBodies = []
-        self.action_space = a_s.ActionSpace(action_size)
+        self.action_space = a_s.ActionSpace(action_size, action_type)
     def State_To_Array(self, state):
         y = 0
         out = np.zeros(self.state_size)
@@ -155,6 +162,7 @@ class Simulation(): #Rigid Body
         self.bodies.append(r)
     
     def addProjectile(self, parent, firespeed):
+        self.firedProjectiles += 1
         mass = 1. #mass of the object
         dim = np.array([0.1,0.1,0.1]) #dimensions of the cube object
         x = parent.X + np.matmul(parent.R, np.array([0.,0.,0.5])) #position
@@ -196,6 +204,7 @@ class Simulation(): #Rigid Body
         #self.resetState = self.yfinal
         self.resetState = copy.deepcopy(self.yfinal)
         self.resetBodies = copy.deepcopy(self.bodies)
+        self.firedProjectiles = 0
         
     def reset(self):
         self.yfinal = copy.deepcopy(self.resetState)
@@ -203,7 +212,8 @@ class Simulation(): #Rigid Body
         self.bodies = copy.deepcopy(self.resetBodies)
         #print(self.bodies)
         self.t = 0.
-        return self.yfinal
+        self.firedProjectiles = 0
+        return processStateOuput(self.yfinal, self.t, self.firedProjectiles)
     
     def runSimulation(self, agentActions):       
         self.yfinal = self.Bodies_To_Array() 
@@ -229,17 +239,45 @@ class Simulation(): #Rigid Body
                 self.y0 = self.removeObject(self.y0, self.bodies[i].objectName)
                 i -= 1
             i += 1
-            
+        
         if(len(self.bodies) == 0):
             #print("NO MORE BODIES!")
-            print("hit planet")
-            return self.tempY, self.tempR, True
+            print("no more bodies")
+            outState = processStateOuput(self.tempY, self.t, self.firedProjectiles)
+            return outState, self.tempR, True
         #############agent actions added here###########
         #forward, back, up, down, left, right, rollleft, rollright
+        targetPosition = np.array([0.,0.,0.])
+        ia = 0
         i = 0
         while(i < len(self.bodies)):
-            self.y0[(i*self.state_size)+13:(i*self.state_size)+21] = self.action_space.actions[int(agentActions[i])]
-            print("Thruster: {0}".format(int(agentActions[i])))
+            if(self.bodies[i].objectType == "Agent"):
+                action = self.action_space.actions[int(agentActions[ia])]
+                self.y0[(i*self.state_size)+13:(i*self.state_size)+self.state_size] = self.action_space.actions[int(agentActions[i])]
+                #print("Rotation: {0}".format(self.bodies[i].q))
+                #print("Time: {0}".format(self.t))
+                #print("Action: {0}".format(int(agentActions[ia])))
+                if(action[-1] == 1 and self.firedProjectiles < 4):
+                    #fire projectile
+                    #print("FIRE {0}".format(self.firedProjectiles))
+                    self.addProjectile(self.bodies[i], 2.5)
+                    self.y0 = np.append(self.y0, self.State_To_Array(self.bodies[-1]))
+                    self.yfinal = self.y0
+                ia += 1
+            elif(self.bodies[i].objectType == "Target"):
+                targetPosition = self.bodies[i].X
+            elif(self.bodies[i].objectType == "Projectile"):
+                targetradius = 5.
+                #print("projectile: {0}".format(self.bodies[i].X))
+                #print("target: {0}".format(targetPosition))
+                collision = rb.checkCollision(self.bodies[i].X, targetPosition, targetradius, self.bodies[i].P, self.bodies[i].mass)            
+                if(collision):
+                    print("projectile hit target")
+                    self.bodies[i].alive = False
+                    reward = 1000.
+                    outState = processStateOuput(self.yfinal, self.t, self.firedProjectiles)
+                    return outState, reward, True
+                    #print("hit planet")
             i += 1           
             
         ###############################################
@@ -249,27 +287,17 @@ class Simulation(): #Rigid Body
         self.yfinal = self.r.y
         self.t += self.tick_length
         
-        
         ##########################reward function#########################
-        reward = 0.
-        maxDistance = 10.
-        targetDistance = 5.
-        a = 1
-        target = "Prime"
-        i = 0
-        while(i < len(self.bodies)):
-            if(self.bodies[i].objectName == target):
-                distance = np.linalg.norm(self.bodies[i].X)
-                print(distance)
-                temp = np.absolute(distance - targetDistance)
-                reward = (-a*np.square(temp)) + 1
-                self.tempR = reward
-                if(distance > maxDistance):
-                    print("hit maxdistance {0}".format(maxDistance))
-                    return self.yfinal, reward, True
-                i = len(self.bodies)
-            i += 1
+        reward = -self.t
+        self.tempR = reward
+        #punish being slow
+        
         ##################################################################
+        if(self.t >= 7.5): #limit simulation to 15 seconds
+            print("out of time")
+            outState = processStateOuput(self.yfinal, self.t, self.firedProjectiles)
+            return outState, reward, True
+        
         return self.yfinal, reward, False
 
 
